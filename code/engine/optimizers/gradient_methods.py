@@ -1,7 +1,7 @@
 import numpy as np
-from base import Optimizer
 from scipy.optimize import minimize_scalar
-from utils import logger
+from engine.optimizers.base import Optimizer
+from engine.utils import logger
 
 class GradientDescent(Optimizer):
     def __init__(self, target_function, **kwargs):

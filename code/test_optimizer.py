@@ -1,6 +1,6 @@
 import numpy as np
-from models import TargetFunction
-from gradient_methods import GradientDescent
+from engine.models import TargetFunction
+from engine.optimizers.gradient_methods import GradientDescent
 
 def test_string_parsing_and_standard_gd():
     print("--- Test 1: String parsing, standard GD ---")

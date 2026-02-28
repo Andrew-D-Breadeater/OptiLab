@@ -1,7 +1,7 @@
 import numpy as np
 import sympy as sp
-from typing import Callable, Union
-from utils import logger
+from typing import Callable
+from engine.utils import logger
 
 class OptimisationResults:
     def __init__(self):

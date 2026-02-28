@@ -1,7 +1,7 @@
 import time
 import numpy as np
-from models import OptimisationResults, TargetFunction
-from utils import logger
+from engine.utils import logger
+from engine.models import OptimisationResults
 
 class Optimizer:
     def __init__(self, target_function, **kwargs):
@@ -18,11 +18,10 @@ class Optimizer:
         """Perform one iteration. Must be implemented by child classes."""
         raise NotImplementedError("Subclasses must implement step()")
 
-    def run(self, max_iter=1000, tol=1e-6):
+    def run(self, max_iter=1000, tol=1e-6, callback=None):
         start_time = time.time()
         
         for i in range(max_iter):
-            # Log state before stepping
             self.results.history.append({
                 "x": self.current_x.copy(),
                 "subgrad": self.used_subgradient
@@ -32,6 +31,15 @@ class Optimizer:
             self.current_x = self.step()
             
             self.results.iterations += 1
+            
+            # Emitting progress to the GUI
+            if callback:
+                callback(self.results.iterations)
+            
+            if np.linalg.norm(self.current_x - old_x) < tol:
+                self.results.converged = True
+                break
+        
             
             # Basic convergence check: change in x
             if np.linalg.norm(self.current_x - old_x) < tol:

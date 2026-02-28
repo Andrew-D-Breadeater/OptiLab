@@ -1,6 +1,6 @@
+import logging
 import numpy as np
 import sympy as sp
-import logging
 
 # Configure logging to both file and console
 logging.basicConfig(
