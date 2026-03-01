@@ -39,7 +39,11 @@ class TargetFunction:
             raise TypeError("Expression must be a string or a callable function.")
 
     def _parse_string(self, expr_str: str):
-        self.sympy_expr = sp.sympify(expr_str)
+        try:
+            self.sympy_expr = sp.sympify(expr_str)
+        except Exception as e:
+            logger.debug(f"Failed to parse '{expr_str}': {e}")
+            raise ValueError(f"Invalid expression: {expr_str}")
         
         # Extract and sort variables alphabetically so array inputs map correctly
         self.variables = sorted(list(self.sympy_expr.free_symbols), key=lambda s: s.name)

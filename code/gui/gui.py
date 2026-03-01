@@ -354,36 +354,39 @@ class OptimizerGUI(QMainWindow):
         bounds_str = self.bounds_input.text()
         
         try:
-            # Safely evaluate the bounds string into a tuple of tuples
-            bounds = ast.literal_eval(bounds_str)
-            
-            # Ensure it is a list/tuple of tuples, e.g., ((-10, 10), (-10, 10))
-            if not isinstance(bounds, (list, tuple)) or not all(isinstance(b, (list, tuple)) for b in bounds):
-                raise ValueError("Bounds must be a sequence of coordinate pairs.")
+            # 1. Validate Bounds
+            try:
+                bounds = ast.literal_eval(bounds_str)
+                if not isinstance(bounds, (list, tuple)) or not all(isinstance(b, (list, tuple)) for b in bounds):
+                    raise ValueError("Bounds must be a sequence of coordinate pairs.")
+            except Exception as e:
+                raise ValueError(f"Invalid Bounds Format")
+
+            # 2. Validate Expression
+            try:
+                target = TargetFunction(expr, bounds=list(bounds))
+            except Exception as e:
+                raise ValueError(f"Invalid Math Expression")
 
             gui_logger.debug(f"Evaluating new TargetFunction: {expr}, bounds: {bounds}")
             
-            # Create the TargetFunction
-            target = TargetFunction(expr, bounds=list(bounds))
-            
-            # Update plot
             self.canvas_func.draw_contour(target)
             
-            # Check convexity
             is_convex, counter_point = check_convexity(expr, ['x', 'y'], bounds)
             
             if is_convex is True:
                 self.convex_label.setText("<b>Convexity:</b> <span style='color:green;'>PSD Confirmed</span>")
-                gui_logger.info("Function is convex.")
             elif is_convex is False:
                 self.convex_label.setText(f"<b>Convexity:</b> <span style='color:red;'>Failed at {counter_point}</span>")
-                gui_logger.info("Function is non-convex.")
             else:
                 self.convex_label.setText("<b>Convexity:</b> Error / Unknown")
 
-        except (SyntaxError, ValueError) as e:
-            gui_logger.debug(f"Invalid bounds format: {bounds_str}. Error: {e}")
+        except ValueError as e:
+            # Catches both custom ValueErrors raised above
+            error_type = str(e)
+            gui_logger.debug(f"Evaluation deferred: {error_type}")
+            
             self.canvas_func.axes.clear()
-            self.canvas_func.axes.set_title("Invalid Bounds Format")
+            self.canvas_func.axes.set_title(f"Waiting: {error_type}...")
             self.canvas_func.draw()
-            self.convex_label.setText("<b>Convexity:</b> Invalid Bounds")
+            self.convex_label.setText("<b>Convexity:</b> Waiting for valid input...")
