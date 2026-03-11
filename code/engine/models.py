@@ -1,16 +1,16 @@
 import numpy as np
 import sympy as sp
-from typing import Callable
+from typing import Callable, Optional, List, Dict, Any
 from engine.utils import logger
 
 class OptimisationResults:
     def __init__(self):
-        self.history = []           # Changed: List of dicts e.g., {"x": np.array, "subgrad": bool}
-        self.final_x = None         # Final coordinates
-        self.final_f = None         # Function value at final_x
-        self.execution_time = 0.0
-        self.iterations = 0
-        self.converged = False
+        self.history: List[Dict[str, Any]] = []                 # Changed: List of dicts e.g., {"x": np.array, "subgrad": bool}
+        self.final_population: Optional[np.ndarray] = None      # Final coordinates
+        self.final_f: Optional[float] = None                    # Function value at final_x
+        self.execution_time: float = 0.0
+        self.iterations: int = 0
+        self.converged: bool = False
 
 class TargetFunction:
     def __init__(self, expression: str | Callable, bounds: list, grad_func: Callable | None = None):

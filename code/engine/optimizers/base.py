@@ -7,52 +7,59 @@ class Optimizer:
     def __init__(self, target_function, **kwargs):
         self.target = target_function
         self.results = OptimisationResults()
-        # Set a default starting point if not provided in kwargs
-        self.current_x = kwargs.get('start_pos', np.zeros(len(target_function.variables)))
-        self.used_subgradient = False # Track if the last step used a subgradient for logging purposes
+        
+        # Initialize state as a 2D array (N points, D dimensions). For GD, N=1.
+        start_pos = kwargs.get('start_pos', np.zeros(len(target_function.variables)))
+        self.population = np.atleast_2d(start_pos)
+        self.stopping_criterion = kwargs.get('stopping_criterion', 'step_size')
+        self.tol = 1e-6
 
-        logger.info(f"--- Starting {self.__class__.__name__} ---")
-        logger.info(f"Parameters: {kwargs}")
+    def _get_history_state(self):
+        return {"population": self.population.copy()}
 
     def step(self):
-        """Perform one iteration. Must be implemented by child classes."""
         raise NotImplementedError("Subclasses must implement step()")
+
+    def check_convergence(self, old_population):
+        # Base implementation: check if the maximum movement of any point is below tolerance
+        if self.stopping_criterion == 'step_size':
+            max_movement = np.max(np.linalg.norm(self.population - old_population, axis=1))
+            return max_movement < self.tol
+        return False
+
+    def _log_final_results(self):
+        # Default behavior: log the entire population
+        logger.info(f"Optimization ended. Converged: {self.results.converged} in {self.results.iterations} iterations.")
+        logger.info(f"Final f(x): {self.results.final_f}")
 
     def run(self, max_iter=1000, tol=1e-6, callback=None):
         start_time = time.time()
+        self.tol = tol
+        
+        # Centralized startup logging
+        logger.info(f"--- Starting {self.__class__.__name__} ---")
+        # Log all instance variables as parameters
+        logger.info(f"Parameters: {self.__dict__}")
         
         for i in range(max_iter):
-            self.results.history.append({
-                "x": self.current_x.copy(),
-                "subgrad": self.used_subgradient
-            })
+            self.results.history.append(self._get_history_state())
             
-            old_x = self.current_x.copy()
-            self.current_x = self.step()
-            
+            old_population = self.population.copy()
+            self.population = self.step()
             self.results.iterations += 1
             
-            # Emitting progress to the GUI
             if callback:
                 callback(self.results.iterations)
             
-            if np.linalg.norm(self.current_x - old_x) < tol:
+            if self.check_convergence(old_population):
                 self.results.converged = True
-                break
-        
-            
-            # Basic convergence check: change in x
-            if np.linalg.norm(self.current_x - old_x) < tol:
-                self.results.converged = True
+                self.results.history.append(self._get_history_state())
                 break
         
         self.results.execution_time = time.time() - start_time
-        self.results.final_x = self.current_x
-        self.results.final_f = self.target.evaluate(self.current_x)
+        self.results.final_population = self.population
+        f_vals = [self.target.evaluate(p) for p in self.population]
+        self.results.final_f = np.min(f_vals)
         
-        logger.info(f"Optimization ended. Converged: {self.results.converged} in {self.results.iterations} iterations.")
-        logger.info(f"Final x: {self.results.final_x}")
-        logger.info(f"Final f(x): {self.results.final_f}")
-        logger.info("-" * 40)
-        
+        self._log_final_results() # Hook called here
         return self.results

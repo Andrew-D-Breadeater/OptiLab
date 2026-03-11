@@ -7,17 +7,39 @@ class GradientDescent(Optimizer):
     def __init__(self, target_function, **kwargs):
         super().__init__(target_function, **kwargs)
         self.learning_rate = kwargs.get('learning_rate', 0.01)
-        self.decay_rate = kwargs.get('decay_rate', 1.0) # How fast the learning rate decays each iteration (1.0 means no decay)
+        self.decay_rate = kwargs.get('decay_rate', 1.0)
         self.use_line_search = kwargs.get('use_line_search', False)
         self.use_exact_line_search = kwargs.get('use_exact_line_search', False)
         
-        # Ravine parameters
         self.use_ravine = kwargs.get('use_ravine', False)
-        self.ravine_step_size = kwargs.get('ravine_step_size', 0.5) # Represents 't'
-        self.ravine_shift = kwargs.get('ravine_shift', 0.5) # The transverse shift amount
+        self.ravine_step_size = kwargs.get('ravine_step_size', 0.5)
+        self.ravine_shift = kwargs.get('ravine_shift', 0.5)
         self.prev_base_point = None 
         self.is_ravine_step = False
-        self.initial_shift_done = False # Track if we created the second base point
+        self.initial_shift_done = False
+        
+        self.current_grad = None # Store gradient for convergence checking
+        self.used_subgradient = False
+
+    def _get_history_state(self):
+        state = super()._get_history_state()
+        state["subgrad"] = self.used_subgradient
+        return state
+    
+    def _log_final_results(self):
+        logger.info(f"Optimization ended. Converged: {self.results.converged} in {self.results.iterations} iterations.")
+        logger.info(f"Final best point: {self.population[0]}")
+        logger.info(f"Final f(x): {self.results.final_f}")
+        logger.info("-" * 40)
+    
+    def check_convergence(self, old_population):
+        if self.stopping_criterion == 'gradient_norm' and self.current_grad is not None:
+            # infinity norm of the gradient: max absolute component
+            return np.max(np.abs(self.current_grad)) < self.tol
+        # Fallback to the base class check (step_size)
+        return super().check_convergence(old_population)
+
+    # (Keep your _exact_line_search and _backtracking_line_search methods exactly as they are)
 
     def _exact_line_search(self, x, direction):
         
@@ -55,28 +77,29 @@ class GradientDescent(Optimizer):
             # Safety break to prevent infinite loop on flat regions
             if alpha < 1e-12:
                 return alpha
-
+            
     def step(self):
+        current_x = self.population[0] # Extract the single point for GD
+        
         # 1. Initialization: Create second base point via shift
         if self.use_ravine and not self.initial_shift_done:
-            self.prev_base_point = self.current_x.copy()
-            # Apply shift to all dimensions, or randomly to break symmetry
-            shift_vector = np.ones_like(self.current_x) * self.ravine_shift
-            shifted_x = self.current_x + shift_vector
+            self.prev_base_point = current_x.copy()
+            shift_vector = np.ones_like(current_x) * self.ravine_shift
+            shifted_x = current_x + shift_vector
             
-            # Take one regular gradient step from the shifted point
             grad, is_subgrad = self.target.evaluate_gradient(shifted_x)
             self.used_subgradient = is_subgrad
+            self.current_grad = grad
             direction = -grad
             alpha = self._backtracking_line_search(shifted_x, grad, direction) if self.use_line_search else self.learning_rate
             
             self.initial_shift_done = True
-            self.is_ravine_step = True # Next step will be a ravine step
-            return shifted_x + alpha * direction
+            self.is_ravine_step = True
+            return np.atleast_2d(shifted_x + alpha * direction)
 
         # 2. Ravine Extrapolation Step
         if self.use_ravine and self.is_ravine_step and self.prev_base_point is not None:
-            x_k = self.current_x
+            x_k = current_x
             x_prev = self.prev_base_point
             
             f_k = self.target.evaluate(x_k)
@@ -87,7 +110,7 @@ class GradientDescent(Optimizer):
             
             if norm == 0:
                 self.is_ravine_step = False
-                return x_k
+                return np.atleast_2d(x_k)
             
             direction_normalized = diff_vector / norm
             sign_f = np.sign(f_k - f_prev)
@@ -98,20 +121,21 @@ class GradientDescent(Optimizer):
             self.is_ravine_step = False
             self.used_subgradient = False 
             
-            return v_next
+            return np.atleast_2d(v_next)
 
         # 3. Regular Gradient Step
-        grad, is_subgrad = self.target.evaluate_gradient(self.current_x)
+        grad, is_subgrad = self.target.evaluate_gradient(current_x)
         self.used_subgradient = is_subgrad
+        self.current_grad = grad
         direction = -grad
         
-        alpha = self._backtracking_line_search(self.current_x, grad, direction) if self.use_line_search else self.learning_rate
+        alpha = self._backtracking_line_search(current_x, grad, direction) if self.use_line_search else self.learning_rate
             
-        new_x = self.current_x + alpha * direction
+        new_x = current_x + alpha * direction
         
         if self.use_ravine:
             self.is_ravine_step = True
         
-        self.learning_rate *= self.decay_rate # Apply decay to shrink step size over time
+        self.learning_rate *= self.decay_rate
             
-        return new_x
+        return np.atleast_2d(new_x)
