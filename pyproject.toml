@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "optilab"
+version = "0.1.0"
+description = "Optimization engine supporting Gradient and Evolutionary methods with a Streamlit UI."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "sympy",
+    "scipy",
+    "streamlit",
+    "plotly"
+]
+
+[tool.setuptools.packages.find]
+where = ["code"]
