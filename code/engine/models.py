@@ -51,11 +51,14 @@ class TargetFunction:
         # Convert symbolic expression to a fast numpy callable
         self.callable_func = sp.lambdify([self.variables], self.sympy_expr, modules="numpy")
         
-        # Calculate analytical gradient vector ∇f
-        self.sympy_grad = [sp.diff(self.sympy_expr, var) for var in self.variables]
-        
-        # Convert symbolic gradient to a fast numpy callable
-        self.grad_func = sp.lambdify([self.variables], self.sympy_grad, modules="numpy")
+        # 2. Attempt to create the analytical gradient, but handle failures silently
+        try:
+            sympy_grad = [sp.diff(self.sympy_expr, var) for var in self.variables]
+            self.grad_func = sp.lambdify([self.variables], sympy_grad, modules="numpy")
+        except Exception as e:
+            # If analytical differentiation or lambdification fails, log it and set to None
+            logger.warning(f"Analytical gradient not available for '{expr_str}': {e}. Using numerical fallback.")
+            self.grad_func = None
         
     def evaluate(self, x):
         try:
