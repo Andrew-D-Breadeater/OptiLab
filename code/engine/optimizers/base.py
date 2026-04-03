@@ -2,6 +2,7 @@ import time
 import numpy as np
 from engine.utils import logger
 from engine.models import OptimisationResults
+from scipy.optimize import minimize_scalar
 
 class Optimizer:
     def __init__(self, target_function, **kwargs):
@@ -63,3 +64,50 @@ class Optimizer:
         
         self._log_final_results() # Hook called here
         return self.results
+    
+class TraditionalOptimizer(Optimizer):
+    """Intermediate base class for single-point gradient/Hessian based methods."""
+    def __init__(self, target_function, **kwargs):
+        super().__init__(target_function, **kwargs)
+        self.learning_rate = kwargs.get('learning_rate', 0.01)
+        self.use_line_search = kwargs.get('use_line_search', False)
+        self.use_exact_line_search = kwargs.get('use_exact_line_search', False)
+        self.current_grad = None
+
+    def _log_final_results(self):
+        logger.info(f"Optimization ended. Converged: {self.results.converged} in {self.results.iterations} iterations.")
+        logger.info(f"Final best point: {self.population[0]}")
+        logger.info(f"Final f(x): {self.results.final_f}")
+        logger.info("-" * 40)
+
+    def check_convergence(self, old_population):
+        if self.stopping_criterion == 'gradient_norm' and self.current_grad is not None:
+            return np.max(np.abs(self.current_grad)) < self.tol
+        return super().check_convergence(old_population)
+
+    def get_alpha(self, x, grad, direction):
+        """Helper to determine step size based on configuration."""
+        if self.use_exact_line_search:
+            return self._exact_line_search(x, direction)
+        elif self.use_line_search:
+            return self._backtracking_line_search(x, grad, direction)
+        else:
+            return self.learning_rate
+
+    def _exact_line_search(self, x, direction):
+        def phi(alpha):
+            return self.target.evaluate(x + alpha * direction)
+        result = minimize_scalar(phi)
+        return getattr(result, 'x')
+    
+    def _backtracking_line_search(self, x, grad, direction, alpha=1.0, beta=0.5, c=1e-4):
+        f_x = self.target.evaluate(x)
+        dot_product = np.dot(grad, direction)
+        
+        while True:
+            f_next = self.target.evaluate(x + alpha * direction)
+            if f_next <= f_x + c * alpha * dot_product:
+                return alpha
+            alpha *= beta
+            if alpha < 1e-12:
+                return alpha

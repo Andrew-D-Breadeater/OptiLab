@@ -1,0 +1,38 @@
+{
+    "Sphere": {
+        "expr": "x**2 + y**2",
+        "bounds": "(-5, 5), (-5, 5)",
+        "start_pos": "4.0, 4.0",
+        "is_default": true
+    },
+    "Rosenbrock": {
+        "expr": "(1 - x)**2 + 100 * (y - x**2)**2",
+        "bounds": "(-5, 5), (-5, 5)",
+        "start_pos": "-1.2, 1.0",
+        "is_default": true
+    },
+    "Levy_13": {
+        "expr": "sin(3*pi*x)**2 + (x-1)**2 * (1 + sin(3*pi*y)**2) + (y-1)**2 * (1 + sin(2*pi*y)**2)",
+        "bounds": "(-10, 10), (-10, 10)",
+        "start_pos": "0.0, 0.0",
+        "is_default": true
+    },
+    "Eggholder": {
+        "expr": "-(y+47)*sin(sqrt(abs(x/2 + y + 47))) - x*sin(sqrt(abs(x - (y + 47))))",
+        "bounds": "(-512, 512), (-512, 512)",
+        "start_pos": "0.0, 0.0",
+        "is_default": true
+    },
+    "Himmelblau": {
+        "expr": "(x**2 + y - 11)**2 + (x + y**2 - 7)**2",
+        "bounds": "(-5, 5), (-5, 5)",
+        "start_pos": "0.0, 0.0",
+        "is_default": true
+    },
+    "Ackley": {
+        "expr": "-20*exp(-0.2*sqrt(0.5*(x**2 + y**2))) - exp(0.5*(cos(2*pi*x) + cos(2*pi*y))) + exp(1) + 20",
+        "bounds": "(-32, 32), (-32, 32)",
+        "start_pos": "10.0, 10.0",
+        "is_default": true
+    }
+}
