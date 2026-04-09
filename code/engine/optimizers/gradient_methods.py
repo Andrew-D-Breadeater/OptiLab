@@ -43,7 +43,9 @@ class GradientDescent(TraditionalOptimizer):
             
             self.initial_shift_done = True
             self.is_ravine_step = True
-            return np.atleast_2d(shifted_x + alpha * direction)
+            
+            new_x = self.projection_strategy.project(shifted_x + alpha * direction)
+            return np.atleast_2d(new_x)
 
         # 2. Ravine Extrapolation Step
         if self.use_ravine and self.is_ravine_step and self.prev_base_point is not None:
@@ -69,7 +71,8 @@ class GradientDescent(TraditionalOptimizer):
             self.is_ravine_step = False
             self.used_subgradient = False 
             
-            return np.atleast_2d(v_next)
+            new_x = self.projection_strategy.project(v_next)
+            return np.atleast_2d(new_x)
 
         # 3. Regular Gradient Step
         grad, is_subgrad = self.target.evaluate_gradient(current_x)
@@ -79,7 +82,7 @@ class GradientDescent(TraditionalOptimizer):
         
         alpha = self.get_alpha(current_x, grad, direction)
             
-        new_x = current_x + alpha * direction
+        new_x = self.projection_strategy.project(current_x + alpha * direction)
         
         if self.use_ravine:
             self.is_ravine_step = True

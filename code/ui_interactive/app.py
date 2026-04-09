@@ -17,6 +17,10 @@ from engine.strategies.selection import (ElitismSelection, TournamentSelection,
 from engine.strategies.crossover import UniformCrossover, NonUniformCrossover
 from engine.strategies.mutation import RealCodedMutation
 from engine.function_library import FunctionLibrary
+from engine.strategies.projections import (
+    NoProjection, NonNegativeProjection, BoxProjection, 
+    HyperplaneProjection, HalfSpaceProjection, SphereProjection
+)
 
 # --- Logging Setup ---
 ui_logger = logging.getLogger("ui_app")
@@ -33,11 +37,13 @@ st.set_page_config(layout="wide", page_title="Optimization Engine")
 if 'func_lib' not in st.session_state:
     st.session_state.func_lib = FunctionLibrary()
     
-# Initialize text box states so they can be overwritten by the dropdown
-if 'form_expr' not in st.session_state:
-    st.session_state.form_expr = "x**2 + y**2"
-    st.session_state.form_bounds = "(-5, 5), (-5, 5)"
-    st.session_state.form_start = "4.0, 4.0"
+# The "Vault": These keys persist because they aren't linked to widgets
+if 'persistent_expr' not in st.session_state:
+    st.session_state.persistent_expr = "x**2 + y**2"
+if 'persistent_bounds' not in st.session_state:
+    st.session_state.persistent_bounds = "(-5, 5), (-5, 5)"
+if 'persistent_start' not in st.session_state:
+    st.session_state.persistent_start = "4.0, 4.0"
 
 if 'phase' not in st.session_state:
     ui_logger.info("Initializing new user session.")
@@ -57,8 +63,13 @@ if 'bad_point' not in st.session_state:
 def reset_optimization():
     ui_logger.info("User clicked 'New Optimization'. Resetting application state.")
     st.session_state.phase = 'INPUT'
+    
+    # Reset the dropdown to manual so it doesn't conflict with persisted text
+    st.session_state.preset_selector = "-- Custom / Manual --"
+    
+    # Clear the results but KEEP the form_expr, form_bounds, and form_start
     st.session_state.results = None
-    st.session_state.f_history =[]
+    st.session_state.f_history = []
     st.session_state.is_convex = None
     st.session_state.bad_point = None
 
@@ -83,7 +94,6 @@ with st.sidebar:
     kwargs = {}
     
     if method in ["Gradient Descent", "Newton's Method"]:
-        # Newton's method typically uses a learning rate of 1.0 for full steps
         default_lr = 0.1 if method == "Gradient Descent" else 1.0
         kwargs['learning_rate'] = st.number_input("Learning Rate", value=default_lr)
         kwargs['stopping_criterion'] = st.selectbox("Stopping Criterion", ['gradient_norm', 'step_size'])
@@ -94,6 +104,50 @@ with st.sidebar:
             kwargs['use_ravine'] = st.checkbox("Use Ravine Method")
             if kwargs['use_ravine']:
                 kwargs['ravine_step_size'] = st.number_input("Ravine Step Size", value=0.5)
+            
+            # --- Projection Strategy Instantiation ---
+            st.markdown("---")
+            st.markdown("**Constraint / Projection**")
+            proj_type = st.selectbox("Boundary Projection",["None", "Non-Negative", "Box (Bounds)", "Hyperplane", "Half-Space", "Sphere"])
+            
+            if proj_type == "None":
+                kwargs['projection_strategy'] = NoProjection()
+                
+            elif proj_type == "Non-Negative":
+                kwargs['projection_strategy'] = NonNegativeProjection()
+                
+            elif proj_type == "Box (Bounds)":
+                # Dynamically read the bounds from the main area's session state
+                bounds_str = st.session_state.get('form_bounds', "(-5, 5), (-5, 5)")
+                parsed_bounds = parse_tuple_string(bounds_str)
+                if parsed_bounds:
+                    kwargs['projection_strategy'] = BoxProjection(parsed_bounds)
+                else:
+                    st.sidebar.error("Invalid Bounds format in main area.")
+                    kwargs['projection_strategy'] = NoProjection()
+                    
+            elif proj_type in ["Hyperplane", "Half-Space"]:
+                c_str = st.text_input("Normal Vector (c)", value="1.0, 1.0")
+                b_val = st.number_input("Scalar (b)", value=4.0)
+                c_vec = parse_tuple_string(c_str)
+                if c_vec:
+                    if proj_type == "Hyperplane":
+                        kwargs['projection_strategy'] = HyperplaneProjection(c=c_vec, b=b_val)
+                    else:
+                        kwargs['projection_strategy'] = HalfSpaceProjection(c=c_vec, b=b_val)
+                else:
+                    st.sidebar.error("Invalid normal vector format.")
+                    kwargs['projection_strategy'] = NoProjection()
+                    
+            elif proj_type == "Sphere":
+                center_str = st.text_input("Center", value="0.0, 0.0")
+                r_val = st.number_input("Radius", value=2.0, min_value=0.01)
+                center_vec = parse_tuple_string(center_str)
+                if center_vec:
+                    kwargs['projection_strategy'] = SphereProjection(center=center_vec, radius=r_val)
+                else:
+                    st.sidebar.error("Invalid center format.")
+                    kwargs['projection_strategy'] = NoProjection()
             
     elif method == "Genetic Algorithm":
         kwargs['population_size'] = st.number_input("Population Size", value=50)
@@ -130,28 +184,20 @@ with control_area:
     if st.session_state.phase == 'INPUT':
         lib = st.session_state.func_lib
         
-        # --- CALLBACKS (The Safe Zone) ---
+        # Callback to update the "Vault" and widgets when a preset is selected
         def on_preset_change():
             sel = st.session_state.preset_selector
             if sel != "-- Custom / Manual --":
                 data = lib.functions[sel]
+                # Update both the widget keys and the persistent vault
                 st.session_state.form_expr = data["expr"]
                 st.session_state.form_bounds = data["bounds"]
                 st.session_state.form_start = data["start_pos"]
-
-        def handle_delete():
-            sel = st.session_state.preset_selector
-            if sel != "-- Custom / Manual --" and not lib.functions[sel].get("is_default", False):
-                lib.delete(sel)
-                # Now it's safe to reset the dropdown because nothing has rendered yet
-                st.session_state.preset_selector = "-- Custom / Manual --"
-
-        def handle_save(name, expr, bounds, start):
-            if name and name != "-- Custom / Manual --":
-                lib.save(name, expr, bounds, start)
-                # Optional: Force the dropdown to select the new preset
-                st.session_state.preset_selector = name
-
+                
+                st.session_state.persistent_expr = data["expr"]
+                st.session_state.persistent_bounds = data["bounds"]
+                st.session_state.persistent_start = data["start_pos"]
+                
         # --- UI LAYOUT ---
 
         # Preset Selection Row
@@ -162,22 +208,21 @@ with control_area:
             st.selectbox("Load Function Preset", preset_names, key="preset_selector", on_change=on_preset_change)
             
         with col_pre2:
-            st.write("") 
+            st.write("")
             st.write("")
             sel = st.session_state.get("preset_selector", "-- Custom / Manual --")
-            is_def = lib.functions.get(sel, {}).get("is_default", False)
-            if sel != "-- Custom / Manual --" and not is_def:
-                # Use on_click for safe state modification
-                st.button("🗑️ Delete Preset", use_container_width=True, on_click=handle_delete)
+            if sel != "-- Custom / Manual --" and not lib.functions[sel].get("is_default", False):
+                if st.button("🗑️ Delete Preset", use_container_width=True):
+                    lib.delete(sel)
+                    st.rerun()
 
-        # Math Input Row
+        # Math Input Row: We set 'value' from the vault
         c1, c2, c3 = st.columns(3)
-        func_str = c1.text_input("Target Function f(x)", key="form_expr")
-        bounds_str = c2.text_input("Bounds", key="form_bounds")
-        start_str = c3.text_input("Starting Point (Single-Agent only)", key="form_start", 
-                                   disabled=(method == "Genetic Algorithm"))
+        func_str = c1.text_input("Target Function f(x)", value=st.session_state.persistent_expr, key="form_expr")
+        bounds_str = c2.text_input("Bounds", value=st.session_state.persistent_bounds, key="form_bounds")
+        start_str = c3.text_input("Starting Point (Single-Agent only)", value=st.session_state.persistent_start, 
+                                  key="form_start", disabled=(method == "Genetic Algorithm"))
         
-        # Start & Save Row
         col_btn1, col_btn2, col_btn3 = st.columns([2, 1, 1])
         with col_btn1:
             st.write("")
@@ -187,22 +232,29 @@ with control_area:
             new_preset_name = st.text_input("New Preset Name", placeholder="e.g. My Trap Func", label_visibility="collapsed")
             
         with col_btn3:
-            # Pass all current field values as arguments to the save callback
-            st.button("💾 Save as Preset", use_container_width=True, 
-                      on_click=handle_save, 
-                      args=(new_preset_name, func_str, bounds_str, start_str))
+            if st.button("💾 Save as Preset", use_container_width=True):
+                if new_preset_name and new_preset_name != "-- Custom / Manual --":
+                    lib.save(new_preset_name, st.session_state.form_expr, st.session_state.form_bounds, st.session_state.form_start)
+                    st.success(f"Saved '{new_preset_name}'!")
+                    time.sleep(1)
+                    st.rerun()
 
-        # Optimization Start Logic
         if start_clicked:
-            ui_logger.info(f"User initiated 'Start Optimization'. Target: '{func_str}', Method: '{method}', Max Iter: {max_iter}, Tol: {tol}")
-            bounds = parse_tuple_string(bounds_str)
+            # SAVE CURRENT INPUTS TO VAULT BEFORE CHANGING PHASE
+            st.session_state.persistent_expr = st.session_state.form_expr
+            st.session_state.persistent_bounds = st.session_state.form_bounds
+            st.session_state.persistent_start = st.session_state.form_start
+            
+            ui_logger.info(f"User initiated 'Start Optimization'. Target: '{st.session_state.form_expr}'")
+            
+            bounds = parse_tuple_string(st.session_state.form_bounds)
             if bounds is None:
                 ui_logger.warning(f"User input invalid bounds format: {bounds_str}")
                 st.error("Invalid bounds format. Please use format: (-5, 5), (-5, 5)")
             else:
                 try:
                     ui_logger.info("Initializing TargetFunction and Optimizer engine.")
-                    target = TargetFunction(func_str, bounds=bounds)
+                    target = TargetFunction(st.session_state.form_expr, bounds=bounds)
                     st.session_state.target = target
                     
                     # Run Convexity Check
@@ -211,7 +263,7 @@ with control_area:
                     st.session_state.bad_point = bad_point
                     
                     if method in ["Gradient Descent", "Newton's Method"]:
-                        start_pos = np.array(parse_tuple_string(start_str))
+                        start_pos = np.array(parse_tuple_string(st.session_state.form_start))
                         if method == "Gradient Descent":
                             opt = GradientDescent(target, start_pos=start_pos, **kwargs)
                         else:
@@ -387,3 +439,6 @@ if st.session_state.phase == 'RESULTS' and st.session_state.results and st.sessi
                 
         df_hist = pd.DataFrame(hist_data)
         st.dataframe(df_hist, height=450, use_container_width=True)
+        
+#with st.sidebar.expander("🔍 Live Session State Debugger"):
+#    st.write(st.session_state)

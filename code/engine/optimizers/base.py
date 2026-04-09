@@ -3,6 +3,7 @@ import numpy as np
 from engine.utils import logger
 from engine.models import OptimisationResults
 from scipy.optimize import minimize_scalar
+from engine.strategies.projections import NoProjection
 
 class Optimizer:
     def __init__(self, target_function, **kwargs):
@@ -72,6 +73,7 @@ class TraditionalOptimizer(Optimizer):
         self.learning_rate = kwargs.get('learning_rate', 0.01)
         self.use_line_search = kwargs.get('use_line_search', False)
         self.use_exact_line_search = kwargs.get('use_exact_line_search', False)
+        self.projection_strategy = kwargs.get('projection_strategy', NoProjection())
         self.current_grad = None
 
     def _log_final_results(self):
@@ -82,7 +84,9 @@ class TraditionalOptimizer(Optimizer):
 
     def check_convergence(self, old_population):
         if self.stopping_criterion == 'gradient_norm' and self.current_grad is not None:
-            return np.max(np.abs(self.current_grad)) < self.tol
+            current_x = self.population[0]
+            mapped_x = self.projection_strategy.project(current_x - self.current_grad)
+            return np.max(np.abs(current_x - mapped_x)) < self.tol
         return super().check_convergence(old_population)
 
     def get_alpha(self, x, grad, direction):
@@ -96,18 +100,27 @@ class TraditionalOptimizer(Optimizer):
 
     def _exact_line_search(self, x, direction):
         def phi(alpha):
-            return self.target.evaluate(x + alpha * direction)
+            projected_x = self.projection_strategy.project(x + alpha * direction)
+            return self.target.evaluate(projected_x)
         result = minimize_scalar(phi)
         return getattr(result, 'x')
     
     def _backtracking_line_search(self, x, grad, direction, alpha=1.0, beta=0.5, c=1e-4):
         f_x = self.target.evaluate(x)
-        dot_product = np.dot(grad, direction)
         
         while True:
-            f_next = self.target.evaluate(x + alpha * direction)
-            if f_next <= f_x + c * alpha * dot_product:
+            # Project the proposed step onto the admissible set X
+            x_next = self.projection_strategy.project(x + alpha * direction)
+            f_next = self.target.evaluate(x_next)
+            
+            actual_step = x_next - x
+            
+            dot_product = np.dot(grad, actual_step)
+            
+            if f_next <= f_x + c * dot_product:
                 return alpha
+            
             alpha *= beta
+            
             if alpha < 1e-12:
                 return alpha

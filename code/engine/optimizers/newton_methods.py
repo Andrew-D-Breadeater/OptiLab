@@ -38,6 +38,7 @@ class NewtonOptimizer(TraditionalOptimizer):
         direction = self._solve_direction(H, grad)
         
         alpha = self.get_alpha(current_x, grad, direction)
-        new_x = current_x + alpha * direction
+        
+        new_x = self.projection_strategy.project(current_x + alpha * direction)
         
         return np.atleast_2d(new_x)
