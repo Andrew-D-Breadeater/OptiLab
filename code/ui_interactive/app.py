@@ -240,7 +240,7 @@ with control_area:
                     st.rerun()
 
         if start_clicked:
-            # SAVE CURRENT INPUTS TO VAULT BEFORE CHANGING PHASE
+            # Save current form inputs to the persistent vault
             st.session_state.persistent_expr = st.session_state.form_expr
             st.session_state.persistent_bounds = st.session_state.form_bounds
             st.session_state.persistent_start = st.session_state.form_start
@@ -419,21 +419,23 @@ if st.session_state.phase == 'RESULTS' and st.session_state.results and st.sessi
         fig_conv.update_layout(title="Convergence Rate", xaxis_title="Iteration", yaxis_title="Best f(x)", margin=dict(l=0, r=0, t=30, b=0), height=450)
         st.plotly_chart(fig_conv, use_container_width=True)
 
-    # 3. History View Panel
+        # 3. History View Panel
     with col_hist:
         st.markdown("**Optimization Log**")
         
-        # Build history data list based on method
         hist_data =[]
-        for i, step in enumerate(res.history):
-            # Show up to current frame for animation sync, or show all if you prefer. 
-            # Syncing with frame is usually cleaner.
-            if i > frame:
-                break
-                
-            if st.session_state.method in ["Gradient Descent", "Newton's Method"]:
+        # Slice up to the current frame for clean animation sync
+        for i, step in enumerate(res.history[:frame + 1]):
+            if st.session_state.method in["Gradient Descent", "Newton's Method"]:
                 pt = step["population"][0]
-                hist_data.append({"Iter": i, "x": round(pt[0], 4), "y": round(pt[1], 4), "f(x)": round(st.session_state.f_history[i], 6)})
+                row = {"Iter": i} 
+                
+                # Dynamically map each coordinate to its variable name (x, y, z, x1, etc.)
+                for j, var_name in enumerate(target.variables):
+                    row[var_name] = round(pt[j], 4)
+                    
+                row["f(x)"] = round(st.session_state.f_history[i], 6)
+                hist_data.append(row)
             else:
                 hist_data.append({"Iter": i, "Best f(x)": round(st.session_state.f_history[i], 6)})
                 
