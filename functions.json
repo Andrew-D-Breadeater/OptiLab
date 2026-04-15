@@ -52,5 +52,11 @@
         "bounds": "(-5, 5), (-5, 5), (-5, 5)",
         "start_pos": "4.0, 4.0, 4.0",
         "is_default": false
+    },
+    "x": {
+        "expr": "x",
+        "bounds": "(-5, 5), (-5, 5)",
+        "start_pos": "4.0, 4.0",
+        "is_default": false
     }
 }
