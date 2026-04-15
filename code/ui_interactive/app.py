@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
+import sympy as sp
 
 from engine.models import TargetFunction
 from engine.optimizers.gradient_methods import GradientDescent
@@ -19,7 +20,7 @@ from engine.strategies.mutation import RealCodedMutation
 from engine.function_library import FunctionLibrary
 from engine.strategies.projections import (
     NoProjection, NonNegativeProjection, BoxProjection, 
-    HyperplaneProjection, HalfSpaceProjection, SphereProjection
+    HyperplaneProjection, HalfSpaceProjection, SphereProjection, CustomNonlinearProjection
 )
 
 # --- Logging Setup ---
@@ -108,7 +109,7 @@ with st.sidebar:
             # --- Projection Strategy Instantiation ---
             st.markdown("---")
             st.markdown("**Constraint / Projection**")
-            proj_type = st.selectbox("Boundary Projection",["None", "Non-Negative", "Box (Bounds)", "Hyperplane", "Half-Space", "Sphere"])
+            proj_type = st.selectbox("Boundary Projection",["None", "Non-Negative", "Box (Bounds)", "Hyperplane", "Half-Space", "Sphere", "Custom Non-linear"])
             
             if proj_type == "None":
                 kwargs['projection_strategy'] = NoProjection()
@@ -117,7 +118,6 @@ with st.sidebar:
                 kwargs['projection_strategy'] = NonNegativeProjection()
                 
             elif proj_type == "Box (Bounds)":
-                # Dynamically read the bounds from the main area's session state
                 bounds_str = st.session_state.get('form_bounds', "(-5, 5), (-5, 5)")
                 parsed_bounds = parse_tuple_string(bounds_str)
                 if parsed_bounds:
@@ -147,6 +147,23 @@ with st.sidebar:
                     kwargs['projection_strategy'] = SphereProjection(center=center_vec, radius=r_val)
                 else:
                     st.sidebar.error("Invalid center format.")
+                    kwargs['projection_strategy'] = NoProjection()
+
+            elif proj_type == "Custom Non-linear":
+                st.info("Write one constraint per line (e.g., `y - x**3 >= 0`).")
+                c_text = st.text_area("Constraints", value="y - x**2 >= 0\nx >= 0\ny >= 0")
+                c_lines =[line.strip() for line in c_text.split('\n') if line.strip()]
+                
+                # Safely extract variables from the current string
+                try:
+                    expr_str = st.session_state.get('form_expr', 'x')
+                    sympy_expr = sp.sympify(expr_str)
+                    variables = sorted([s.name for s in sympy_expr.free_symbols])
+                    
+                    # Assign directly to projection_strategy!
+                    kwargs['projection_strategy'] = CustomNonlinearProjection(c_lines, variables)
+                except Exception as e:
+                    st.sidebar.error(f"Waiting for valid target function... ({e})")
                     kwargs['projection_strategy'] = NoProjection()
             
     elif method == "Genetic Algorithm":
@@ -240,7 +257,7 @@ with control_area:
                     st.rerun()
 
         if start_clicked:
-            # Save current form inputs to the persistent vault
+            # Save current inputs before changing phase
             st.session_state.persistent_expr = st.session_state.form_expr
             st.session_state.persistent_bounds = st.session_state.form_bounds
             st.session_state.persistent_start = st.session_state.form_start
@@ -372,8 +389,8 @@ if st.session_state.phase == 'RESULTS' and st.session_state.results and st.sessi
         if not bounds or len(bounds) != 2:
             st.warning("Contour plotting requires exactly 2 dimensions.")
         else:
-            x_range = np.linspace(bounds[0][0], bounds[0][1], 100)
-            y_range = np.linspace(bounds[1][0], bounds[1][1], 100)
+            x_range = np.linspace(bounds[0][0], bounds[0][1], 300)
+            y_range = np.linspace(bounds[1][0], bounds[1][1], 300)
             X, Y = np.meshgrid(x_range, y_range)
             
             try:
@@ -387,6 +404,30 @@ if st.session_state.phase == 'RESULTS' and st.session_state.results and st.sessi
                         Z[i,j] = target.evaluate([X[i,j], Y[i,j]])
             
             fig_contour = go.Figure(data=[go.Contour(x=x_range, y=y_range, z=Z, colorscale='Viridis')])
+                        
+            # --- Shading for Boundaries ---
+            opt = st.session_state.optimizer
+            proj_strat = getattr(opt, 'projection_strategy', None)
+            
+            if proj_strat is not None:
+                mask = proj_strat.get_feasibility_mask(X, Y)
+                
+                # If the mask is not entirely True, there are forbidden zones
+                if not np.all(mask):
+                    # Invert the mask: Allowed = 0.0, Blocked = 1.0
+                    shadow_z = (~mask).astype(float)
+                    
+                    fig_contour.add_trace(go.Contour(
+                        x=x_range, y=y_range, z=shadow_z,
+                        showscale=False,
+                        # 0.0 (Allowed) -> Completely transparent
+                        # 1.0 (Blocked) -> Shaded dark grey with 20% opacity
+                        colorscale=[[0, 'rgba(0,0,0,0)'], [1, 'rgba(0,0,0,0.2)']],
+                        hoverinfo='skip'
+                    ))
+            
+            # --- Trajectory / Scatter logic ---
+            # Extract current population points ...
             
             # --- Trajectory / Scatter logic ---
             if st.session_state.method in ["Gradient Descent", "Newton's Method"]:
