@@ -45,7 +45,15 @@ class TargetFunction:
             logger.debug(f"Failed to parse '{expr_str}': {e}")
             raise ValueError(f"Invalid expression: {expr_str}")
         
-        self.variables = sorted(list(self.sympy_expr.free_symbols), key=lambda s: s.name)
+        found_symbols = self.sympy_expr.free_symbols
+        
+        # --- Force dimensionality to match bounds ---
+        if len(self.bounds) == 2 and len(found_symbols) == 1:
+            # If we have 1 symbol but bounds suggest 2D, create a second dummy variable
+            all_symbols = {sp.Symbol('x'), sp.Symbol('y')}
+        else:
+            all_symbols = found_symbols
+        self.variables = sorted(list(all_symbols), key=lambda s: s.name)
         self.callable_func = sp.lambdify([self.variables], self.sympy_expr, modules="numpy")
         
         # Gradient

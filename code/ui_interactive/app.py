@@ -20,8 +20,7 @@ from engine.strategies.mutation import RealCodedMutation
 from engine.function_library import FunctionLibrary
 from engine.strategies.projections import (
     NoProjection, NonNegativeProjection, BoxProjection, 
-    HyperplaneProjection, HalfSpaceProjection, SphereProjection, CustomNonlinearProjection
-)
+    HyperplaneProjection, HalfSpaceProjection, SphereProjection, CustomNonlinearProjection)
 
 # --- Logging Setup ---
 ui_logger = logging.getLogger("ui_app")
@@ -152,15 +151,24 @@ with st.sidebar:
             elif proj_type == "Custom Non-linear":
                 st.info("Write one constraint per line (e.g., `y - x**3 >= 0`).")
                 c_text = st.text_area("Constraints", value="y - x**2 >= 0\nx >= 0\ny >= 0")
-                c_lines =[line.strip() for line in c_text.split('\n') if line.strip()]
+                c_lines = [line.strip() for line in c_text.split('\n') if line.strip()]
                 
-                # Safely extract variables from the current string
                 try:
                     expr_str = st.session_state.get('form_expr', 'x')
                     sympy_expr = sp.sympify(expr_str)
-                    variables = sorted([s.name for s in sympy_expr.free_symbols])
+                    found_symbols = sympy_expr.free_symbols
                     
-                    # Assign directly to projection_strategy!
+                    # FIX: Parse the string into a list before checking len()
+                    raw_bounds_str = st.session_state.get('form_bounds', '(-5, 5), (-5, 5)')
+                    parsed_bounds = parse_tuple_string(raw_bounds_str)
+                    
+                    if parsed_bounds and len(parsed_bounds) == 2 and len(found_symbols) == 1:
+                        all_symbols = {sp.Symbol('x'), sp.Symbol('y')} 
+                    else:
+                        all_symbols = found_symbols
+
+                    variables = sorted([s.name for s in all_symbols])
+                    
                     kwargs['projection_strategy'] = CustomNonlinearProjection(c_lines, variables)
                 except Exception as e:
                     st.sidebar.error(f"Waiting for valid target function... ({e})")
@@ -473,7 +481,7 @@ if st.session_state.phase == 'RESULTS' and st.session_state.results and st.sessi
                 
                 # Dynamically map each coordinate to its variable name (x, y, z, x1, etc.)
                 for j, var_name in enumerate(target.variables):
-                    row[var_name] = round(pt[j], 4)
+                    row[var_name] = round(pt[j], 4)#type: ignore
                     
                 row["f(x)"] = round(st.session_state.f_history[i], 6)
                 hist_data.append(row)
