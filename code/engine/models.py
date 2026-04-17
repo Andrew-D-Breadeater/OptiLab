@@ -188,3 +188,49 @@ class TargetFunction:
         except Exception as e:
             logger.error(f"Convexity check failed: {e}")
             return None, None
+        
+class MultiTargetFunction:
+    """
+    Handles multiple objective functions for Multi-Criteria Optimization (MCO).
+    """
+    def __init__(self, expressions: list, bounds: list):
+        if not isinstance(expressions, (list, tuple)) or len(expressions) < 2:
+            raise ValueError("MultiTargetFunction requires a list of at least two expressions.")
+        
+        self.bounds = bounds
+        self.targets =[]
+        
+        for i, expr in enumerate(expressions):
+            logger.info(f"Initializing MCO objective {i+1}/{len(expressions)}...")
+            # Instantiate a standard TargetFunction for each objective.
+            # Analytical gradients/Hessians are attempted but ultimately ignored by the GA.
+            self.targets.append(TargetFunction(expr, bounds=bounds))
+            
+        # Variables and dimensionality are derived from the first function
+        self.variables = self.targets[0].variables
+        self.num_objectives = len(self.targets)
+        
+    def evaluate(self, x):
+        """
+        Evaluates all objective functions for the given point(s).
+        
+        Args:
+            x: A single point of shape (D,) or a population matrix of shape (N, D).
+            
+        Returns:
+            np.ndarray: 
+                - Shape (M,) if x is a single point.
+                - Shape (N, M) if x is a population.
+        """
+        x = np.asarray(x, dtype=float)
+        
+        # Evaluate each target function. 
+        # target.evaluate(x) returns either a scalar or an array of shape (N,) depending on x.
+        evaluations = [target.evaluate(x) for target in self.targets]
+        
+        if x.ndim == 1:
+            # Return 1D array of objective values[f1, f2, ..., fM]
+            return np.array(evaluations)
+        else:
+            # Return 2D matrix where each row is an individual and each column is an objective
+            return np.column_stack(evaluations)
