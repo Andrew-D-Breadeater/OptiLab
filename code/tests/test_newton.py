@@ -1,6 +1,11 @@
 import numpy as np
 from engine.models import TargetFunction
 from engine.optimizers.newton_methods import NewtonOptimizer
+from engine.strategies.stopping import StepSizeCriterion
+from engine.strategies.step_size import FixedStepSize, BacktrackingLineSearch
+
+
+_DEFAULT_CRIT = lambda: StepSizeCriterion(tol=1e-6)
 
 def get_x(results):
     return results.final_population[0]
@@ -11,9 +16,10 @@ def test_quadratic_1_step():
     # Newton's method should find the minimum of a pure quadratic in exactly 1 step with alpha=1.0
     target = TargetFunction("x**2 + y**2", bounds=[(-5, 5), (-5, 5)])
     opt = NewtonOptimizer(
-        target, 
-        start_pos=np.array([4.0, 4.0]), 
-        learning_rate=1.0 # Standard Newton step
+        target,
+        start_pos=np.array([4.0, 4.0]),
+        step_size_strategy=FixedStepSize(1.0),  # Standard Newton step
+        stopping_criterion=_DEFAULT_CRIT(),
     )
     results = opt.run(max_iter=100)
     
@@ -27,9 +33,10 @@ def test_rosenbrock():
     # Standard benchmark. Newton requires multiple steps here.
     target = TargetFunction("(1 - x)**2 + 100 * (y - x**2)**2", bounds=[(-5, 5), (-5, 5)])
     opt = NewtonOptimizer(
-        target, 
-        start_pos=np.array([-1.2, 1.0]), 
-        learning_rate=1.0
+        target,
+        start_pos=np.array([-1.2, 1.0]),
+        step_size_strategy=FixedStepSize(1.0),
+        stopping_criterion=_DEFAULT_CRIT(),
     )
     results = opt.run(max_iter=100)
     
@@ -43,8 +50,10 @@ def test_singular_hessian_error():
     # Hessian is [[0, 0], [0, 0]]. It is uninvertible (singular).
     target = TargetFunction("x + y", bounds=[(-5, 5), (-5, 5)])
     opt = NewtonOptimizer(
-        target, 
-        start_pos=np.array([0.0, 0.0])
+        target,
+        start_pos=np.array([0.0, 0.0]),
+        step_size_strategy=FixedStepSize(0.01),
+        stopping_criterion=_DEFAULT_CRIT(),
     )
     
     try:
@@ -58,9 +67,10 @@ def test_line_search_integration():
     print("--- Test 4: Newton with Backtracking Line Search ---")
     target = TargetFunction("x**4 + y**4", bounds=[(-5, 5), (-5, 5)])
     opt = NewtonOptimizer(
-        target, 
-        start_pos=np.array([2.0, 2.0]), 
-        use_line_search=True
+        target,
+        start_pos=np.array([2.0, 2.0]),
+        step_size_strategy=BacktrackingLineSearch(),
+        stopping_criterion=_DEFAULT_CRIT(),
     )
     results = opt.run(max_iter=100)
     

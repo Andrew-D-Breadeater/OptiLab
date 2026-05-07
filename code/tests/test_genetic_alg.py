@@ -5,6 +5,7 @@ from engine.strategies.selection import ElitismSelection, TournamentSelection
 from engine.strategies.crossover import UniformCrossover, NonUniformCrossover
 from engine.strategies.mutation import RealCodedMutation
 from engine.optimizers.population_based import GeneticAlgorithm
+from engine.strategies.stopping import StagnationCriterion, DegenerationCriterion
 
 def run_ga_test(name, **kwargs):
     print(f"\n--- {name} ---")
@@ -29,8 +30,7 @@ def test_ga_standard():
         crossover_strategy=UniformCrossover(),
         mutation_strategy=RealCodedMutation(sigma=0.2),
         phi_sel=0.2, phi_cross=0.6, phi_mut=0.2,
-        stopping_criterion='stagnation',
-        patience=5
+        stopping_criterion=StagnationCriterion(patience=5),
     )
 
 def test_ga_elitist():
@@ -41,8 +41,7 @@ def test_ga_elitist():
         crossover_strategy=NonUniformCrossover(),
         mutation_strategy=RealCodedMutation(sigma=0.1),
         phi_sel=0.2, phi_cross=0.6, phi_mut=0.2,
-        stopping_criterion='degeneration',
-        degeneration_tol=0.05
+        stopping_criterion=DegenerationCriterion(tol=0.05),
     )
 
 if __name__ == "__main__":

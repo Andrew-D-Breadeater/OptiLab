@@ -3,9 +3,14 @@ from engine.models import TargetFunction
 from engine.optimizers.gradient_methods import GradientDescent
 from engine.optimizers.newton_methods import NewtonOptimizer
 from engine.strategies.projections import (
-    NoProjection, NonNegativeProjection, BoxProjection, 
+    NoProjection, NonNegativeProjection, BoxProjection,
     HyperplaneProjection, HalfSpaceProjection, SphereProjection
 )
+from engine.strategies.stopping import StepSizeCriterion
+from engine.strategies.step_size import FixedStepSize
+
+
+_DEFAULT_CRIT = lambda: StepSizeCriterion(tol=1e-6)
 
 def get_x(results):
     return np.round(results.final_population[0], 4)
@@ -13,14 +18,18 @@ def get_x(results):
 def test_unconstrained_newton():
     print("--- Test 1: Newton's Method (No Projection) ---")
     target = TargetFunction("x**2 + y**2", bounds=[(-10, 10), (-10, 10)])
-    opt = NewtonOptimizer(target, start_pos=np.array([4.0, 4.0]), learning_rate=1.0)
+    opt = NewtonOptimizer(target, start_pos=np.array([4.0, 4.0]),
+                          step_size_strategy=FixedStepSize(1.0),
+                          stopping_criterion=_DEFAULT_CRIT())
     res = opt.run(max_iter=50)
     print(f"Converged: {res.converged} | Final x: {get_x(res)} (Expected: [0. 0.])\n")
 
 def test_unconstrained_gd():
     print("--- Test 2: Gradient Descent (No Projection) ---")
     target = TargetFunction("x**2 + y**2", bounds=[(-10, 10), (-10, 10)])
-    opt = GradientDescent(target, start_pos=np.array([4.0, 4.0]), learning_rate=0.1)
+    opt = GradientDescent(target, start_pos=np.array([4.0, 4.0]),
+                          step_size_strategy=FixedStepSize(0.1),
+                          stopping_criterion=_DEFAULT_CRIT())
     res = opt.run(max_iter=100)
     print(f"Converged: {res.converged} | Final x: {get_x(res)} (Expected: [0. 0.])\n")
 
@@ -32,8 +41,9 @@ def test_nonnegative_projection():
     opt = GradientDescent(
         target, 
         start_pos=np.array([2.0, 2.0]), 
-        learning_rate=0.1,
-        projection_strategy=NonNegativeProjection()
+        step_size_strategy=FixedStepSize(0.1),
+        projection_strategy=NonNegativeProjection(),
+        stopping_criterion=_DEFAULT_CRIT(),
     )
     res = opt.run(max_iter=100)
     print(f"Converged: {res.converged} | Final x: {get_x(res)} (Expected:[0. 0.])\n")
@@ -46,8 +56,9 @@ def test_box_projection():
     opt = GradientDescent(
         target, 
         start_pos=np.array([0.0, 0.0]), 
-        learning_rate=0.1,
-        projection_strategy=BoxProjection([(-2, 2), (-2, 2)])
+        step_size_strategy=FixedStepSize(0.1),
+        projection_strategy=BoxProjection([(-2, 2), (-2, 2)]),
+        stopping_criterion=_DEFAULT_CRIT(),
     )
     res = opt.run(max_iter=100)
     print(f"Converged: {res.converged} | Final x: {get_x(res)} (Expected: [2. 2.])\n")
@@ -61,8 +72,9 @@ def test_hyperplane_projection():
     opt = GradientDescent(
         target, 
         start_pos=np.array([5.0, 5.0]), 
-        learning_rate=0.1,
-        projection_strategy=HyperplaneProjection(c=[1, 1], b=4.0)
+        step_size_strategy=FixedStepSize(0.1),
+        projection_strategy=HyperplaneProjection(c=[1, 1], b=4.0),
+        stopping_criterion=_DEFAULT_CRIT(),
     )
     res = opt.run(max_iter=100)
     print(f"Converged: {res.converged} | Final x: {get_x(res)} (Expected: [2. 2.])\n")
@@ -76,8 +88,9 @@ def test_halfspace_projection():
     opt = GradientDescent(
         target, 
         start_pos=np.array([0.0, 0.0]), # Start inside valid space
-        learning_rate=0.1,
-        projection_strategy=HalfSpaceProjection(c=[1, 1], b=2.0)
+        step_size_strategy=FixedStepSize(0.1),
+        projection_strategy=HalfSpaceProjection(c=[1, 1], b=2.0),
+        stopping_criterion=_DEFAULT_CRIT(),
     )
     res = opt.run(max_iter=100)
     print(f"Converged: {res.converged} | Final x: {get_x(res)} (Expected: [1. 1.])\n")
@@ -91,8 +104,9 @@ def test_sphere_projection():
     opt = GradientDescent(
         target, 
         start_pos=np.array([0.0, 0.0]), 
-        learning_rate=0.1,
-        projection_strategy=SphereProjection(center=[0, 0], radius=2.0)
+        step_size_strategy=FixedStepSize(0.1),
+        projection_strategy=SphereProjection(center=[0, 0], radius=2.0),
+        stopping_criterion=_DEFAULT_CRIT(),
     )
     res = opt.run(max_iter=100)
     print(f"Converged: {res.converged} | Final x: {get_x(res)} (Expected: [2. 0.])\n")
