@@ -41,6 +41,15 @@ class Optimizer:
         frame counts. The bound is *soft*: a single ``step()`` whose internal
         emissions overshoot ``max_iter`` finishes its work, then the loop
         exits.
+
+        History contract: the starting state x₀ is appended once before the
+        loop. Each iteration steps, checks convergence, and only then records
+        the post-step state — unless the step strategy already appended its
+        terminal frame itself (ravine strategies do this so they can tag the
+        intermediate descend/extrapolate frames). When convergence fires we
+        break *before* the append: the step that triggered the criterion is
+        by definition within ``tol`` of the previous frame, so the previous
+        frame already represents the converged position.
         """
         start_time = time.time()
 
@@ -49,24 +58,25 @@ class Optimizer:
 
         self.stopping_criterion.on_run_start(self)
 
-        while len(self.results.history) < max_iter:
-            self.results.history.append(self._get_history_state())
+        self.results.history.append(self._get_history_state())
+        self.results.iterations = len(self.results.history)
 
+        while len(self.results.history) < max_iter:
+            len_before_step = len(self.results.history)
             old_population = self.population.copy()
             self.population = self.step()
+
+            if self.stopping_criterion.should_stop(self, old_population):
+                self.results.converged = True
+                break
+
+            if len(self.results.history) == len_before_step:
+                self.results.history.append(self._get_history_state())
+
             self.results.iterations = len(self.results.history)
 
             if callback:
                 callback(self.results.iterations)
-
-            if len(self.results.history) >= max_iter:
-                break
-
-            if self.stopping_criterion.should_stop(self, old_population):
-                self.results.converged = True
-                self.results.history.append(self._get_history_state())
-                self.results.iterations = len(self.results.history)
-                break
 
         self.results.execution_time = time.time() - start_time
         self.results.final_population = self.population

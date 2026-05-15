@@ -6,6 +6,7 @@ import streamlit as st
 from engine.models import TargetFunction
 from engine.optimizers.gradient_methods import GradientDescent
 from engine.optimizers.newton_methods import NewtonOptimizer
+from engine.optimizers.conjugate_gradient import ConjugateGradient
 from engine.optimizers.population_based import GeneticAlgorithm
 
 from ui_interactive.session import (ui_logger, parse_tuple_string,
@@ -96,12 +97,14 @@ def _handle_start_click(method, max_iter, kwargs):
         st.session_state.is_convex = is_convex
         st.session_state.bad_point = bad_point
 
-        if method in ["Gradient Descent", "Newton's Method"]:
+        if method in ["Gradient Descent", "Newton's Method", "Conjugate Gradient"]:
             start_pos = np.array(parse_tuple_string(st.session_state.form_start))
             if method == "Gradient Descent":
                 opt = GradientDescent(target, start_pos=start_pos, **kwargs)
-            else:
+            elif method == "Newton's Method":
                 opt = NewtonOptimizer(target, start_pos=start_pos, **kwargs)
+            else:
+                opt = ConjugateGradient(target, start_pos=start_pos, **kwargs)
         else:
             opt = GeneticAlgorithm(target, **kwargs)
 
@@ -199,7 +202,7 @@ def _render_results_visualizations(res, target):
     col_graph1, col_graph2, col_hist = st.columns([3, 3, 2])
 
     method = st.session_state.method
-    is_single_agent = method in ["Gradient Descent", "Newton's Method"]
+    is_single_agent = method in ["Gradient Descent", "Newton's Method", "Conjugate Gradient"]
     contour_mode = 'trajectory' if is_single_agent else 'swarm'
     history_mode = 'single' if is_single_agent else 'population'
 
@@ -210,7 +213,12 @@ def _render_results_visualizations(res, target):
         else:
             opt = st.session_state.optimizer
             proj_strat = getattr(opt, 'projection_strategy', None)
-            fig = build_contour_figure(target, proj_strat, res.history, frame, contour_mode)
+            has_restarts = any(step.get("restart") for step in res.history)
+            show_restarts = (st.checkbox("Show restart markers", value=True,
+                                         key="show_restart_markers")
+                             if has_restarts else True)
+            fig = build_contour_figure(target, proj_strat, res.history, frame,
+                                       contour_mode, show_restarts=show_restarts)
             st.plotly_chart(fig, use_container_width=True)
 
     with col_graph2:

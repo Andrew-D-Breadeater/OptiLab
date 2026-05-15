@@ -24,9 +24,12 @@ from engine.strategies.stopping import (
     StagnationCriterion, DegenerationCriterion, MaxGenerationsCriterion,
 )
 from engine.strategies.step_size import (
-    FixedStepSize, BacktrackingLineSearch, ExactLineSearch,
+    FixedStepSize, BacktrackingLineSearch, ExactLineSearch, StrongWolfeLineSearch,
 )
 from engine.strategies.gd_step import VanillaGradientStep, RavineStep, OneStepRavineStep
+from engine.strategies.cg_beta import (
+    FletcherReeves, PolakRibiere, HestenesStiefel,
+)
 
 from ui_interactive.session import parse_tuple_string
 
@@ -36,12 +39,13 @@ def render_sidebar():
         st.title("Method Specific Options")
 
         method = st.selectbox("Optimisation Method",
-                              ["Gradient Descent", "Newton's Method", "Genetic Algorithm"],
+                              ["Gradient Descent", "Newton's Method",
+                               "Conjugate Gradient", "Genetic Algorithm"],
                               key="method")
 
         max_iter = st.number_input("Max Iterations", value=100)
 
-        if method in ["Gradient Descent", "Newton's Method"]:
+        if method in ["Gradient Descent", "Newton's Method", "Conjugate Gradient"]:
             kwargs = _render_traditional_sidebar(method)
         else:
             kwargs = _render_genetic_sidebar()
@@ -110,6 +114,34 @@ def _render_traditional_sidebar(method):
             key_prefix="main", default_lr=default_lr, include_exact=True,
         )
 
+    if method == "Conjugate Gradient":
+        beta_choice = st.selectbox(
+            "β Formula",
+            ["Fletcher–Reeves", "Polak–Ribière", "Hestenes–Stiefel"],
+        )
+        beta_map = {
+            "Fletcher–Reeves":  FletcherReeves(),
+            "Polak–Ribière":    PolakRibiere(),
+            "Hestenes–Stiefel": HestenesStiefel(),
+        }
+        kwargs['beta_strategy'] = beta_map[beta_choice]
+
+        enable_restart = st.checkbox("Enable restart", value=True)
+        if enable_restart:
+            # Derive default period from bounds dimensionality the user has
+            # typed in the main pane. Sidebar runs before the target is parsed,
+            # so we can't read len(target.variables) here — counting parsed
+            # bound tuples is the next best signal. Falls back to 2 if bounds
+            # aren't parseable yet (mid-edit).
+            bounds_str = st.session_state.get('form_bounds', '(-5, 5), (-5, 5)')
+            parsed_bounds = parse_tuple_string(bounds_str)
+            n_default = len(parsed_bounds) if parsed_bounds else 2
+            restart_period = st.number_input("Restart period",
+                                             value=n_default, min_value=1)
+            kwargs['restart_every'] = int(restart_period)
+        else:
+            kwargs['restart_every'] = 0  # sentinel: no restart
+
     crit_choice = st.selectbox("Stopping Criterion", ['gradient_norm', 'step_size'])
     crit_tol = st.number_input("Stopping Tolerance", value=1e-4, format="%.1e")
     if crit_choice == 'gradient_norm':
@@ -134,7 +166,7 @@ def _render_step_size_picker(key_prefix, default_lr, include_exact=True,
     All widget keys are prefixed by ``key_prefix`` so multiple pickers can
     coexist on the same page (e.g. inner GD step + ravine extrapolation).
     """
-    options = ["Fixed", "Backtracking"]
+    options = ["Fixed", "Backtracking", "Wolfe"]
     if include_exact:
         options.append("Exact")
     label = "Step Size" if key_prefix == "main" else f"{key_prefix.capitalize()} Step Size Mode"
@@ -149,6 +181,12 @@ def _render_step_size_picker(key_prefix, default_lr, include_exact=True,
         alpha0 = st.number_input("Initial α (backtracking)", value=1.0,
                                  key=f"{key_prefix}_alpha0")
         return BacktrackingLineSearch(alpha0=alpha0)
+    if choice == "Wolfe":
+        c1 = st.number_input("c1 (Armijo)", value=1e-4, format="%.1e",
+                             key=f"{key_prefix}_c1")
+        c2 = st.number_input("c2 (curvature)", value=0.1, format="%.2f",
+                             key=f"{key_prefix}_c2")
+        return StrongWolfeLineSearch(c1=c1, c2=c2)
     return ExactLineSearch()
 
 

@@ -42,7 +42,8 @@ def _classify_ravine_frames(phases):
     return kinds
 
 
-def build_contour_figure(target, projection_strategy, history, frame, mode):
+def build_contour_figure(target, projection_strategy, history, frame, mode,
+                         show_restarts: bool = True):
     """
     Build the contour landscape with trajectory or population swarm overlaid.
 
@@ -52,6 +53,9 @@ def build_contour_figure(target, projection_strategy, history, frame, mode):
         history: list of OptimisationResults.history entries.
         frame: index into history for the current animation frame.
         mode: 'trajectory' for single-agent line, 'swarm' for population scatter.
+        show_restarts: if True (default), overlay turquoise diamonds on the
+            trajectory at frames flagged ``restart=True`` (currently emitted
+            by ConjugateGradient). The UI exposes a checkbox to flip this.
     """
     bounds = target.bounds
     if not bounds or len(bounds) != 2:
@@ -128,6 +132,21 @@ def build_contour_figure(target, projection_strategy, history, frame, mode):
                 marker=dict(color='red', size=8),
                 line=dict(color='red', width=2),
             ))
+
+            # Restart markers (currently emitted by ConjugateGradient).
+            # Frame i has restart=True iff the step that produced it was an
+            # anti-gradient restart step. Overlay turquoise diamonds on top
+            # of the underlying red trajectory marker.
+            restart_flags = [step.get("restart", False) for step in steps]
+            if show_restarts and any(restart_flags):
+                rx = [px[i] for i, r in enumerate(restart_flags) if r]
+                ry = [py[i] for i, r in enumerate(restart_flags) if r]
+                fig.add_trace(go.Scatter(
+                    x=rx, y=ry, mode='markers',
+                    marker=dict(color='turquoise', size=12, symbol='diamond',
+                                line=dict(color='black', width=1.2)),
+                    showlegend=False, hoverinfo='skip',
+                ))
     elif mode == 'swarm':
         current_pop = history[frame]["population"]
         fig.add_trace(go.Scatter(
@@ -155,20 +174,27 @@ def build_convergence_figure(f_history, frame):
 
 def build_history_dataframe(target, history, f_history, mode, frame):
     """
-    mode: 'single' = include per-variable columns (GD/Newton).
-          'population' = just iter + best f(x) (GA).
+    mode: 'single'     = include per-variable columns (GD/Newton/CG).
+          'population' = just best f(x) (GA).
+
+    Streamlit numerates rows itself, so no Iter column. Each row carries
+    ``Δf(x) = f_i − f_{i−1}`` (the signed change in objective from the
+    previous frame). The first row has no previous frame, hence ``None``.
     """
     rows = []
     for i, step in enumerate(history[:frame + 1]):
+        delta_f = round(f_history[i] - f_history[i - 1], 6) if i > 0 else None
         if mode == 'single':
             pt = step["population"][0]
-            row = {"Iter": i}
+            row = {}
             for j, var_name in enumerate(target.variables):
                 row[var_name] = round(pt[j], 4)
             row["f(x)"] = round(f_history[i], 6)
+            row["Δf(x)"] = delta_f
             rows.append(row)
         elif mode == 'population':
-            rows.append({"Iter": i, "Best f(x)": round(f_history[i], 6)})
+            rows.append({"Best f(x)": round(f_history[i], 6),
+                         "Δf(x)": delta_f})
         else:
             raise ValueError(f"Unknown history mode: {mode!r}")
     return pd.DataFrame(rows)
